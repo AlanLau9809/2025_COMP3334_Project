@@ -19,8 +19,8 @@ A Flask-based web application for secure file storage with client-side encryptio
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/yourusername/secure-storage-system.git
-cd secure-storage-system
+git clone https://github.com/AlanLau9809/COMP3334_Project.git
+cd COMP3334_Project
 ```
 
 ### 2. Create Virtual Environment (Recommended)
