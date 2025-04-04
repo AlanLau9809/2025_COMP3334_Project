@@ -37,25 +37,25 @@ def register():
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form.get('username')
+        password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
-
+        
         if user and user.check_password(password):
             login_user(user)
-            log = AuditLog(user_id=user.id, action_type='login', details='User logged in')
-            db.session.add(log)
-            db.session.commit()
-            return redirect(url_for('main.home'))
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('main.home'))
         else:
-            flash('Invalid username or password!', 'danger')
+            flash('Login failed. Check username and password.', 'danger')
+    
     return render_template('login.html')
+
 
 @auth.route('/logout')
 @login_required
 def logout():
-    # log = AuditLog(user_id=current_user.id, action_type='logout', details='User logged out')
-    # db.session.add(log)
+    log = AuditLog(user_id=current_user.id, action_type='logout', details='User logged out')
+    db.session.add(log)
     db.session.commit()
     logout_user()
     return redirect(url_for('auth.login'))

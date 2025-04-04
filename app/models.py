@@ -1,23 +1,39 @@
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
 # 用戶表（對應 SQL 的 User 表）
-class User(db.Model):
-    __tablename__ = 'User'  # 明確指定表名與 SQL 一致
-    user_id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # 主鍵改名為 user_id
+class User(db.Model, UserMixin):   # 继承 UserMixin
+    __tablename__ = 'User'
+    user_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    salt = db.Column(db.String(255))
-    is_admin = db.Column(db.SmallInteger, default=0)  # 使用 SmallInteger 對應 TINYINT(1)
+    is_admin = db.Column(db.SmallInteger, default=0)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+    
+    @property
+    def is_authenticated(self):
+        return True  # 如果用户已通过验证返回 True
+    
+    @property
+    def is_active(self):
+        return True  # 如果账户是激活状态返回 True
+    
+    @property
+    def is_anonymous(self):
+        return False  # 普通用户返回 False
+    
+    def get_id(self):
+        return str(self.user_id)  # 必须返回字符串类型的唯一标识
 
 # 文件表（對應 SQL 的 File 表）
 class File(db.Model):
@@ -30,7 +46,7 @@ class File(db.Model):
     uploaded_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
     # 定義與 User 的關係
-    owner = db.relationship('User', backref='files')
+    owner = db.relationship('User', backref=db.backref('files', lazy='dynamic', cascade='all, delete-orphan'))
 
 # 文件共享表（對應 SQL 的 FileShare 表）
 class FileShare(db.Model):
