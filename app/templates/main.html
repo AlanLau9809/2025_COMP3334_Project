@@ -47,7 +47,7 @@
                         {% for file in files %}
                         <tr>
                             <td>{{ file.filename }}</td>
-                            <td>{{ file.file_size | filesizeformat }}</td>
+                            <td>{{ file.file_size|filesizeformat }}</td>
                             <td>{{ file.uploaded_at.strftime('%Y-%m-%d %H:%M') }}</td>
                             <td>
                                 <div class="btn-group" role="group">

@@ -159,6 +159,11 @@ def upload():
     if file.filename == '':
         return 'Empty filename', 400
     
+    # Check file size limit
+    file.seek(0, os.SEEK_END)
+    original_size = file.tell()
+    file.seek(0)
+    
     # Generate cryptographic materials
     master_salt = generate_prng()
     master_key = generate_prng()
@@ -173,7 +178,13 @@ def upload():
     encrypted_data = encrypt_file_content(raw_data, file_key)
     
     # Store encrypted file
-    upload_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    upload_path = os.path.join(
+        current_app.config['UPLOAD_FOLDER'],
+        f"user_{current_user.user_id}",
+        filename
+    )
+    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+    
     with open(upload_path, 'wb') as f:
         f.write(encrypted_data)
     
@@ -181,6 +192,7 @@ def upload():
     new_file = File(
         user_id=current_user.user_id,
         filename=filename,
+        file_size=original_size,
         encrypted_key=hmac_sha256(master_key, master_salt),  # Store key hash
         file_salt=file_salt,
         master_salt=master_salt,

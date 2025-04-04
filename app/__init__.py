@@ -17,6 +17,13 @@ def create_app():
     
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
+    # for upload file
+    app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'secure_uploads')
+    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+    
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    
+    
     # 初始化扩展
     db.init_app(app)
     login_manager.init_app(app)

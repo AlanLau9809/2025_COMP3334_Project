@@ -46,7 +46,10 @@ class File(db.Model):
     file_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('User.user_id'), nullable=False)  # 外鍵指向 User.user_id
     filename = db.Column(db.String(255), nullable=False)
+    file_size = db.Column(db.BigInteger, nullable=False)
     encrypted_key = db.Column(db.Text, nullable=False)
+    file_salt = db.Column(db.LargeBinary, nullable=False)      # 文件加密专用盐值
+    master_salt = db.Column(db.LargeBinary, nullable=False)    # 主密钥派生盐值
     file_path = db.Column(db.Text, nullable=False)
     uploaded_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
