@@ -1,27 +1,26 @@
-# run.py - Flask 應用啟動入口
 import os
-from dotenv import load_dotenv  # 用於加載環境變量
+from dotenv import load_dotenv  # load environment variables from .env file
 from app import create_app, db
-from app.models import User, File, FileShare, AuditLog  # 導入所有資料庫模型
+from app.models import User, File, FileShare, AuditLog  # import models to ensure they are registered with SQLAlchemy
 from flask_login import LoginManager
 
-# 加載環境變量（如果使用 .env 文件）
+# load environment variables from .env file if it exists
 # load_dotenv()
 
-# 創建 Flask 應用實例
+# create flask app
 app = create_app()
 
 # initialize Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'auth.login'  # 設定未登入用戶的跳轉頁面
+login_manager.login_view = 'auth.login'  # when user is not logged in, redirect to this view
 
 @login_manager.user_loader
 def load_user(user_id):
     """Flask-Login 所需的用戶加載函數"""
     return User.query.get(int(user_id))
 
-# CLI 命令（可選，用於手動初始化資料庫）
+# CLI command to create database tables
 @app.cli.command('init-db')
 def init_db():
 
@@ -30,9 +29,9 @@ def init_db():
     print("Database tables created!")
 
 if __name__ == '__main__':
-    # 啟動 Flask 開發伺服器
+    # enable debug mode only if not in production
     app.run(
-        host='0.0.0.0',  # 允許外部訪問
+        host='0.0.0.0',  # allow access from any IP address
         port=5000,
-        debug=True       # 開發模式開啟調試（生產環境應設為 False）
+        debug=True       # debug=True will enable auto-reload and better error messages
     )
