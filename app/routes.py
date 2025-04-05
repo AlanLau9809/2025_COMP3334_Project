@@ -7,6 +7,13 @@ import hashlib
 from secrets import token_bytes
 from app.models import File, FileShare, AuditLog, User, db
 
+class FileSizeExceeded(Exception):
+    pass
+
+class InvalidFileType(Exception):
+    pass
+
+
 auth = Blueprint('auth', __name__)
 main = Blueprint('main', __name__)
 
@@ -82,9 +89,9 @@ def login():
 @auth.route('/logout')
 @login_required
 def logout():
-    log = AuditLog(user_id=current_user.id, action_type='logout', details='User logged out')
+    log = AuditLog(user_id=current_user.user_id, action_type='logout', details='User logged out')
     db.session.add(log)
-    db.session.commit()
+    db.session.commit() 
     logout_user()
     return redirect(url_for('auth.login'))
 
@@ -150,70 +157,135 @@ def home():
     files = File.query.filter_by(user_id=current_user.user_id).all()
     return render_template('main.html', files=files)
 
+# Route for setting profile settings, including password change
+@main.route('/profile/settings', methods=['GET', 'POST'])
+@login_required
+def profile_settings():
+    if request.method == 'POST':
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+
+        # Validate current password
+        if not current_user.check_password(current_password):
+            flash('Current password is incorrect', 'danger')
+            return redirect(url_for('main.profile_settings'))
+
+        # Validate new password match
+        if new_password != confirm_password:
+            flash('New passwords do not match', 'danger')
+            return redirect(url_for('main.profile_settings'))
+
+        # Update password
+        current_user.set_password(new_password)
+        
+        # Add audit log
+        audit = AuditLog(
+            user_id=current_user.user_id,
+            action_type='password_change',
+            details='Password updated successfully'
+        )
+        db.session.add(audit)
+        db.session.commit()
+
+        flash('Password updated successfully', 'success')
+        return redirect(url_for('main.home'))
+
+    return render_template('profile_settings.html')
+
+# For security reasons, we limit the maximum file size to 50MB
+# This is to prevent denial of service attacks through large file uploads
+
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'docx', 'xlsx'}
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
 @main.route('/upload', methods=['POST'])
 @login_required
 def upload():
     """Secure file upload endpoint with manual encryption"""
     # Validate input
     if 'file' not in request.files:
-        return 'No file uploaded', 400
+        flash('No file selected for upload', 'danger')
+        return redirect(url_for('main.home'))
     
     file = request.files['file']
     if file.filename == '':
-        return 'Empty filename', 400
+        flash('Invalid empty filename', 'danger')
+        return redirect(url_for('main.home'))
     
-    # Check file size limit
-    file.seek(0, os.SEEK_END)
-    original_size = file.tell()
-    file.seek(0)
+    try:
+        if not allowed_file(file.filename):
+            raise InvalidFileType()
+        
+        file.seek(0, os.SEEK_END)
+        original_size = file.tell()
+        if original_size > MAX_FILE_SIZE:
+            raise FileSizeExceeded()
+        file.seek(0)  # Reset file pointer to the beginning after checking size
+        
+        # Generate cryptographic materials
+        master_salt = generate_prng()
+        master_key = generate_prng()
+        file_salt = generate_prng()
+        file_key = derive_file_key(master_key, file_salt)
+        
+        # Process file
+        filename = secure_filename(file.filename)
+        raw_data = file.read()
+        
+        # Encrypt file
+        encrypted_data = encrypt_file_content(raw_data, file_key)
+        
+        # Store encrypted file
+        upload_path = os.path.join(
+            current_app.config['UPLOAD_FOLDER'],
+            f"user_{current_user.user_id}",
+            filename
+        )
+        os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+        
+        with open(upload_path, 'wb') as f:
+            f.write(encrypted_data)
+        
+        # Create database record
+        new_file = File(
+            user_id=current_user.user_id,
+            filename=filename,
+            file_size=original_size,
+            encrypted_key=hmac_sha256(master_key, master_salt),  # Store key hash
+            file_salt=file_salt,
+            master_salt=master_salt,
+            file_path=upload_path
+        )
+        db.session.add(new_file)
+        
+        # Audit log
+        audit = AuditLog(
+            user_id=current_user.user_id,
+            action_type='upload',
+            file_id=new_file.file_id
+        )
+        db.session.add(audit)
+        
+        db.session.commit()
+        
+        flash(f'File "{filename}" encrypted and uploaded successfully', 'success')
+        return redirect(url_for('main.home'))
     
-    # Generate cryptographic materials
-    master_salt = generate_prng()
-    master_key = generate_prng()
-    file_salt = generate_prng()
-    file_key = derive_file_key(master_key, file_salt)
-    
-    # Process file
-    filename = secure_filename(file.filename)
-    raw_data = file.read()
-    
-    # Encrypt file
-    encrypted_data = encrypt_file_content(raw_data, file_key)
-    
-    # Store encrypted file
-    upload_path = os.path.join(
-        current_app.config['UPLOAD_FOLDER'],
-        f"user_{current_user.user_id}",
-        filename
-    )
-    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
-    
-    with open(upload_path, 'wb') as f:
-        f.write(encrypted_data)
-    
-    # Create database record
-    new_file = File(
-        user_id=current_user.user_id,
-        filename=filename,
-        file_size=original_size,
-        encrypted_key=hmac_sha256(master_key, master_salt),  # Store key hash
-        file_salt=file_salt,
-        master_salt=master_salt,
-        file_path=upload_path
-    )
-    db.session.add(new_file)
-    
-    # Audit log
-    audit = AuditLog(
-        user_id=current_user.user_id,
-        action_type='upload',
-        file_id=new_file.file_id
-    )
-    db.session.add(audit)
-    
-    db.session.commit()
-    
-    return 'File uploaded securely', 201
+    except FileSizeExceeded:
+        flash('File size exceeds 50MB limit', 'danger')
+        return redirect(url_for('main.home'))
+    except InvalidFileType:
+        flash('File type not allowed', 'danger')
+        return redirect(url_for('main.home'))
+    except Exception as e:
+        flash(f'Upload failed: {str(e)}', 'danger')
+        return redirect(url_for('main.home'))
 
 @main.route('/share', methods=['POST'])
 @login_required
