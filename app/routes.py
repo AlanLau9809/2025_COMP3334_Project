@@ -171,31 +171,41 @@ def profile_settings():
         new_password = request.form.get('new_password')
         confirm_password = request.form.get('confirm_password')
 
-        # Validate current password
+        validation_passed = True
+        
+        # validate current password
         if not current_user.check_password(current_password):
             flash('Current password is incorrect', 'danger')
-            return redirect(url_for('main.profile_settings'))
-
-        # Validate new password match
+            validation_passed = False
+        
+        # validate new password
         if new_password != confirm_password:
             flash('New passwords do not match', 'danger')
-            return redirect(url_for('main.profile_settings'))
+            validation_passed = False
 
-        # Update password
-        current_user.set_password(new_password)
+        # return and display error messages if validation failed
+        if not validation_passed:
+            return render_template('profile_settings.html')
         
-        # Add audit log
-        audit = AuditLog(
-            user_id=current_user.user_id,
-            action_type='password_change',
-            details='Password updated successfully'
-        )
-        db.session.add(audit)
-        db.session.commit()
+        # additional validation for new password length
+        try:
+            current_user.set_password(new_password)
+            audit = AuditLog(
+                user_id=current_user.user_id,
+                action_type='password_change',
+                details='Password updated successfully'
+            )
+            db.session.add(audit)
+            db.session.commit()
+            flash('Password updated successfully', 'success')
+            return redirect(url_for('main.home'))
+        
+        except Exception as e:
+            db.session.rollback()
+            flash('Password update failed. Please try again.', 'danger')
+            return render_template('profile_settings.html')
 
-        flash('Password updated successfully', 'success')
-        return redirect(url_for('main.home'))
-
+    # GET request: render the profile settings page
     return render_template('profile_settings.html')
 
 # For security reasons, we limit the maximum file size to 50MB
