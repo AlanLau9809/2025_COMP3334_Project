@@ -97,13 +97,21 @@
                             <td>
                                 <div class="btn-group" role="group">
                                     <a href="{{ url_for('main.download', file_id=file.file_id) }}" 
-                                       class="btn btn-sm btn-outline-primary">
+                                       class="btn btn-sm btn-outline-primary" title="Download">
                                        <i class="bi bi-download"></i>
                                     </a>
-                                    <button class="btn btn-sm btn-outline-warning" 
+                                    <a href="{{ url_for('main.view_file', file_id=file.file_id) }}"
+                                       class="btn btn-sm btn-outline-info" title="View">
+                                       <i class="bi bi-eye"></i>
+                                    </a>
+                                    <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}"
+                                       class="btn btn-sm btn-outline-warning" title="Edit">
+                                       <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-success" 
                                             data-bs-toggle="modal" 
                                             data-bs-target="#shareModal"
-                                            data-file-id="{{ file.file_id }}">
+                                            data-file-id="{{ file.file_id }}" title="Share">
                                         <i class="bi bi-share"></i>
                                     </button>
                                     <form class="d-inline" 
@@ -111,7 +119,7 @@
                                           method="POST">
                                         <button type="submit" 
                                                 class="btn btn-sm btn-outline-danger"
-                                                onclick="return confirm('Permanently delete this file?')">
+                                                onclick="return confirm('Permanently delete this file?')" title="Delete">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </form>
@@ -156,6 +164,10 @@
                                     <a href="{{ url_for('main.download', file_id=file.file_id) }}" 
                                        class="btn btn-sm btn-outline-primary">
                                        <i class="bi bi-download"></i>
+                                    </a>
+                                        <a href="{{ url_for('main.view_file', file_id=file.file_id) }}"
+                                        class="btn btn-sm btn-outline-info" title="View">
+                                        <i class="bi bi-eye"></i>
                                     </a>
                                 </div>
                             </td>

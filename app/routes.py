@@ -517,3 +517,126 @@ def download(file_id):
         flash(f'Download failed: {str(e)}', 'danger')
         return redirect(url_for('main.home'))
         abort(500, description=f"Decryption failed: {str(e)}")
+
+@main.route('/edit/<int:file_id>', methods=['GET', 'POST'])
+@login_required
+def edit_file(file_id):
+    """允许文件所有者编辑文件内容"""
+    # 获取文件并验证所有权
+    file = File.query.filter_by(file_id=file_id).first_or_404()
+    
+    # 只有文件所有者可以编辑
+    if file.user_id != current_user.user_id:
+        flash('You do not have permission to edit this file', 'danger')
+        return redirect(url_for('main.home'))
+    
+    # 检查文件类型是否可编辑
+    editable_extensions = {'txt', 'md', 'html', 'css', 'js', 'json', 'xml', 'csv'}
+    file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+    
+    if file_ext not in editable_extensions:
+        flash('This file type cannot be edited online', 'warning')
+        return redirect(url_for('main.home'))
+    
+    try:
+        # 解密文件内容
+        file_key = derive_file_key(file.encrypted_key, file.file_salt)
+        encrypted_data = file.encrypted_content
+        decrypted_data = decrypt_file_content(encrypted_data, file_key)
+        
+        # 尝试将二进制内容转换为文本
+        try:
+            file_content = decrypted_data.decode('utf-8')
+        except UnicodeDecodeError:
+            flash('This file contains binary data and cannot be edited online', 'warning')
+            return redirect(url_for('main.home'))
+        
+        if request.method == 'POST':
+            # 获取编辑后的内容
+            new_content = request.form.get('content', '')
+            
+            # 加密新内容
+            raw_data = new_content.encode('utf-8')
+            encrypted_data = encrypt_file_content(raw_data, file_key)
+            
+            # 更新文件记录
+            file.encrypted_content = encrypted_data
+            file.file_size = len(raw_data)
+            
+            # 添加审计日志
+            log = AuditLog(
+                user_id=current_user.user_id,
+                action_type='edit',
+                file_id=file.file_id,
+                details=f'Edited file: {file.filename}'
+            )
+            db.session.add(log)
+            db.session.commit()
+            
+            flash(f'File "{file.filename}" has been updated', 'success')
+            return redirect(url_for('main.home'))
+        
+        # GET 请求 - 显示编辑表单
+        return render_template('edit_file.html', file=file, content=file_content)
+    
+    except Exception as e:
+        flash(f'Error accessing file: {str(e)}', 'danger')
+        return redirect(url_for('main.home'))
+
+@main.route('/view/<int:file_id>')
+@login_required
+def view_file(file_id):
+    """允许用户查看文件内容（不编辑）"""
+    # 获取文件
+    file = File.query.filter_by(file_id=file_id).first_or_404()
+    
+    # 验证权限（文件所有者或共享用户）
+    is_owner = file.user_id == current_user.user_id
+    
+    if not is_owner:
+        # 检查是否有共享权限
+        share = FileShare.query.filter_by(
+            file_id=file_id, 
+            shared_with_user_id=current_user.user_id
+        ).first()
+        
+        if not share:
+            abort(403, description="You don't have permission to access this file")
+    
+    # 检查文件类型是否可查看
+    viewable_extensions = {'txt', 'md', 'html', 'css', 'js', 'json', 'xml', 'csv'}
+    file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+    
+    if file_ext not in viewable_extensions:
+        flash('This file type cannot be viewed online', 'warning')
+        return redirect(url_for('main.home'))
+    
+    try:
+        # 解密文件内容
+        file_key = derive_file_key(file.encrypted_key, file.file_salt)
+        encrypted_data = file.encrypted_content
+        decrypted_data = decrypt_file_content(encrypted_data, file_key)
+        
+        # 尝试将二进制内容转换为文本
+        try:
+            file_content = decrypted_data.decode('utf-8')
+        except UnicodeDecodeError:
+            flash('This file contains binary data and cannot be viewed online', 'warning')
+            return redirect(url_for('main.home'))
+        
+        # 记录查看操作
+        log = AuditLog(
+            user_id=current_user.user_id,
+            action_type='view',
+            file_id=file_id,
+            details=f'Viewed file: {file.filename}'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        # 显示文件内容
+        return render_template('view_file.html', file=file, content=file_content, is_owner=is_owner)
+    
+    except Exception as e:
+        flash(f'Error viewing file: {str(e)}', 'danger')
+        return redirect(url_for('main.home'))
