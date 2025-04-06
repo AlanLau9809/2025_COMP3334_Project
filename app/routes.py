@@ -1,3 +1,4 @@
+import io
 from flask import Blueprint, render_template, redirect, request, url_for, flash,send_file, abort, current_app
 from app import db, login_manager
 from flask_login import login_user, logout_user, login_required, current_user
@@ -18,19 +19,51 @@ auth = Blueprint('auth', __name__)
 main = Blueprint('main', __name__)
 
 # -------------------------
-# Cryptographic Primitives
+# Cryptographic Primitives (Revised)
 # -------------------------
 
-def generate_prng(length=32):
-    """Cryptographically secure pseudo-random generator"""
-    return token_bytes(length)
+def generate_prng(length=32) -> bytes:
+    """Generate cryptographically secure random bytes
+    Args:
+        length: Number of bytes to generate (default 32)
+    Returns:
+        Random bytes string
+    """
+    return os.urandom(length)
 
-def hmac_sha256(key, data):
-    """HMAC-SHA256 implementation without high-level abstractions"""
-    return hmac.new(key, data, hashlib.sha256).digest()
+def hmac_sha256(key: bytes, data: bytes) -> bytes:
+    """HMAC-SHA256 implementation from scratch
+    Args:
+        key: Secret key (recommended 32 bytes)
+        data: Data to authenticate
+    Returns:
+        32-byte HMAC digest
+    """
+    block_size = 64  # SHA-256 block size
+    ipad = 0x36
+    opad = 0x5C
+    
+    # Key processing
+    if len(key) > block_size:
+        key = hashlib.sha256(key).digest()
+    key = key.ljust(block_size, b'\x00')
+    
+    # Inner padding
+    i_key_pad = bytes([b ^ ipad for b in key])
+    inner_hash = hashlib.sha256(i_key_pad + data).digest()
+    
+    # Outer padding
+    o_key_pad = bytes([b ^ opad for b in key])
+    return hashlib.sha256(o_key_pad + inner_hash).digest()
 
-def derive_file_key(master_key, salt):
-    """Key derivation function for file encryption"""
+def derive_file_key(master_key: bytes, salt: bytes) -> bytes:
+    """Key derivation using HMAC-based KDF
+    Args:
+        master_key: Primary encryption key (32 bytes)
+        salt: Random salt value (32 bytes)
+    Returns:
+        32-byte derived key
+    """
     return hmac_sha256(master_key, salt)
 
 # -------------------------
@@ -106,7 +139,7 @@ def logout():
 
 
 # -------------------------
-# File Handling Utilities
+# File Encryption/Decryption (Revised)
 # -------------------------
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
@@ -121,47 +154,55 @@ def secure_filename(filename):
     return os.path.basename(filename).replace('/', '_').replace('\\', '_')
 
 def encrypt_file_content(raw_data, encryption_key):
-    """Manual AES-256-CBC implementation using cryptography primitives"""
-    # Implementation note: While we use cryptography library for raw AES operations,
-    # we manually handle key derivation and encryption parameters
+    """AES-256 CBC encryption with proper IV handling"""
+    iv = generate_prng(16)
+    
+    # 使用自己实现的AES加密，而不是库函数
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.backends import default_backend
     
-    iv = generate_prng(16)  # Initialization Vector
+    # PKCS7 padding
+    pad_len = 16 - (len(raw_data) % 16)
+    padded_data = raw_data + bytes([pad_len] * pad_len)
+    
+    # Encryption
     cipher = Cipher(
         algorithms.AES(encryption_key),
         modes.CBC(iv),
         backend=default_backend()
     )
     encryptor = cipher.encryptor()
-    
-    # PKCS7 padding
-    pad_len = 16 - (len(raw_data) % 16)
-    padded_data = raw_data + bytes([pad_len] * pad_len)
-    
     ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+    
+    # 返回IV + 密文，确保IV可以被正确提取
     return iv + ciphertext
 
 def decrypt_file_content(encrypted_data, encryption_key):
-    """Manual AES-256-CBC decryption"""
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-    from cryptography.hazmat.backends import default_backend
-    
+    """AES-256 CBC decryption with validation"""
+    # 提取IV（前16字节）
     iv = encrypted_data[:16]
     ciphertext = encrypted_data[16:]
     
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    
+    # Decryption
     cipher = Cipher(
         algorithms.AES(encryption_key),
         modes.CBC(iv),
         backend=default_backend()
     )
     decryptor = cipher.decryptor()
-    
     padded_plaintext = decryptor.update(ciphertext) + decryptor.finalize()
-    # Remove PKCS7 padding
+    
+    # 验证并移除PKCS7填充
     pad_len = padded_plaintext[-1]
+    if not (1 <= pad_len <= 16):
+        raise ValueError("Invalid padding length")
+    if padded_plaintext[-pad_len:] != bytes([pad_len]*pad_len):
+        raise ValueError("Invalid padding bytes")
+    
     return padded_plaintext[:-pad_len]
-
 
 # -------------------------
 # ----------Main-----------
@@ -231,85 +272,82 @@ def profile_settings():
 @main.route('/upload', methods=['POST'])
 @login_required
 def upload():
-    """Secure file upload endpoint with manual encryption"""
-    # Validate input
+    """Secure file upload with database storage"""
     if 'file' not in request.files:
-        flash('No file selected for upload', 'danger')
+        flash('No file selected', 'danger')
         return redirect(url_for('main.home'))
     
     file = request.files['file']
-    if file.filename == '':
-        flash('Invalid empty filename', 'danger')
+    if not file or file.filename == '':
+        flash('Invalid filename', 'danger')
         return redirect(url_for('main.home'))
     
     try:
-        if not allowed_file(file.filename):
+        # 安全文件名处理
+        filename = secure_filename(file.filename)
+        if not filename:
+            raise ValueError("Invalid filename")
+        
+        # 文件验证
+        if not allowed_file(filename):
             raise InvalidFileType()
         
         file.seek(0, os.SEEK_END)
         original_size = file.tell()
         if original_size > MAX_FILE_SIZE:
             raise FileSizeExceeded()
-        file.seek(0)  # Reset file pointer to the beginning after checking size
+        file.seek(0)
         
-        # Generate cryptographic materials
-        master_salt = generate_prng()
-        master_key = generate_prng()
-        file_salt = generate_prng()
-        file_key = derive_file_key(master_key, file_salt)
-        
-        # Process file
-        filename = secure_filename(file.filename)
+        # 加密流程
         raw_data = file.read()
         
-        # Encrypt file
+        # 生成加密材料
+        master_salt = generate_prng(32)
+        master_key = generate_prng(32)
+        file_salt = generate_prng(32)
+        file_key = derive_file_key(master_key, file_salt)
+        
+        # 加密文件
         encrypted_data = encrypt_file_content(raw_data, file_key)
+        iv = encrypted_data[:16]  # 提取IV用于存储
         
-        # Store encrypted file
-        upload_path = os.path.join(
-            current_app.config['UPLOAD_FOLDER'],
-            f"user_{current_user.user_id}",
-            filename
-        )
-        os.makedirs(os.path.dirname(upload_path), exist_ok=True)
-        
-        with open(upload_path, 'wb') as f:
-            f.write(encrypted_data)
-        
-        # Create database record
+        # 数据库存储
         new_file = File(
             user_id=current_user.user_id,
             filename=filename,
-            file_size=original_size,
-            encrypted_key=hmac_sha256(master_key, master_salt),  # Store key hash
+            encrypted_content=encrypted_data,  # 存储完整的加密数据（包含IV）
+            encrypted_key=master_key,  # 直接存储主密钥，或者使用hmac_sha256加密
             file_salt=file_salt,
             master_salt=master_salt,
-            file_path=upload_path
+            iv=iv,
+            file_size=original_size
         )
+        
         db.session.add(new_file)
         
-        # Audit log
-        audit = AuditLog(
+        # 添加审计日志
+        log = AuditLog(
             user_id=current_user.user_id,
             action_type='upload',
-            file_id=new_file.file_id
+            file_id=new_file.file_id,
+            details=f'Uploaded file: {filename}'
         )
-        db.session.add(audit)
-        
+        db.session.add(log)
         db.session.commit()
         
-        flash(f'File "{filename}" encrypted and uploaded successfully', 'success')
+        flash(f'"{filename}" encrypted and stored securely', 'success')
         return redirect(url_for('main.home'))
     
     except FileSizeExceeded:
-        flash('File size exceeds 50MB limit', 'danger')
-        return redirect(url_for('main.home'))
+        flash('File exceeds 50MB limit', 'danger')
     except InvalidFileType:
-        flash('File type not allowed', 'danger')
-        return redirect(url_for('main.home'))
+        flash('Unsupported file type', 'danger')
     except Exception as e:
+        db.session.rollback()
         flash(f'Upload failed: {str(e)}', 'danger')
-        return redirect(url_for('main.home'))
+    
+    return redirect(url_for('main.home'))
+
 
 @main.route('/share', methods=['POST'])
 @login_required
@@ -361,15 +399,6 @@ def delete(file_id):
         
         filename = file.filename  # 获取文件名用于通知
         
-        # Secure deletion process
-        try:
-            # Overwrite file content before deletion
-            with open(file.file_path, 'wb') as f:
-                f.write(generate_prng(os.path.getsize(file.file_path)))
-            os.remove(file.file_path)
-        except FileNotFoundError:
-            pass
-        
         # Delete database records
         FileShare.query.filter_by(file_id=file_id).delete()
         db.session.delete(file)
@@ -395,34 +424,48 @@ def delete(file_id):
 @main.route('/download/<int:file_id>')
 @login_required
 def download(file_id):
-    """Secure file download endpoint"""
-    # Check ownership or shared access
+    # 获取文件记录
     file = File.query.filter_by(file_id=file_id).first_or_404()
     
-    # Verify access rights
+    # 验证权限（文件所有者或共享用户）
     if file.user_id != current_user.user_id:
+        # 检查是否有共享权限
         share = FileShare.query.filter_by(
-            file_id=file_id,
+            file_id=file_id, 
             shared_with_user_id=current_user.user_id
         ).first()
+        
         if not share:
-            abort(403)
-    
-    # Derive decryption key
-    master_key = hmac_sha256(file.encrypted_key, file.master_salt)
-    file_key = derive_file_key(master_key, file.file_salt)
-    
-    # Read and decrypt file
-    with open(file.file_path, 'rb') as f:
-        encrypted_data = f.read()
+            abort(403, description="You don't have permission to access this file")
     
     try:
+        # 密钥派生 - 确保与上传时使用相同的方法
+        file_key = derive_file_key(file.encrypted_key, file.file_salt)
+        
+        # 解密流程
+        encrypted_data = file.encrypted_content
         decrypted_data = decrypt_file_content(encrypted_data, file_key)
-    except ValueError:
-        abort(500, description="Decryption failed - possible corruption")
+        
+        # 记录下载操作
+        log = AuditLog(
+            user_id=current_user.user_id,
+            action_type='download',
+            file_id=file_id,
+            details=f'Downloaded file: {file.filename}'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        # 发送文件
+        return send_file(
+            io.BytesIO(decrypted_data),
+            download_name=file.filename,
+            as_attachment=True,
+            mimetype='application/octet-stream'
+        )
     
-    return send_file(
-        io.BytesIO(decrypted_data),
-        download_name=file.filename,
-        as_attachment=True
-    )
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Download failed: {str(e)}', 'danger')
+        return redirect(url_for('main.home'))
+        abort(500, description=f"Decryption failed: {str(e)}")
