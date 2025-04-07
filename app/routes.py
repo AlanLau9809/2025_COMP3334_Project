@@ -1,6 +1,10 @@
+from datetime import datetime, timedelta
 import io
-from flask import Blueprint, render_template, redirect, request, url_for, flash,send_file, abort, current_app
-from app import db, login_manager
+import random
+import string
+from flask import Blueprint, jsonify, render_template, redirect, request,session, url_for, flash,send_file, abort, current_app
+from flask_mail import Message
+from app import db, login_manager, mail
 from flask_login import login_user, logout_user, login_required, current_user
 import os
 import hmac
@@ -78,32 +82,112 @@ def derive_file_key(master_key: bytes, salt: bytes) -> bytes:
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+@auth.route('/send-otp', methods=['POST'])
+def send_otp():
+    data = request.get_json()
+    email = data.get('email')
+    username = data.get('username')
+    
+    if not email or not username:
+        return jsonify({'success': False, 'message': 'Email and username are required'})
+    
+    # 验证用户名和邮箱是否已存在
+    if User.query.filter_by(username=username).first():
+        return jsonify({'success': False, 'message': 'Username is already taken'})
+    
+    if User.query.filter_by(email=email).first():
+        return jsonify({'success': False, 'message': 'Email is already registered'})
+    
+    # 生成OTP
+    otp = ''.join(random.choices(string.digits, k=6))
+    otp_expiry = datetime.now() + timedelta(minutes=10)
+    
+    # 将OTP存储在会话中
+    session['registration_otp'] = {
+        'email': email,
+        'username': username,
+        'otp': otp,
+        'expiry': otp_expiry.timestamp()
+    }
+    
+    # 发送OTP邮件
+    try:
+        msg = Message(
+            'Your OTP Verification Code',
+            sender=current_app.config.get('MAIL_DEFAULT_SENDER', 'noreply@yourdomain.com'),
+            recipients=[email]
+        )
+        msg.body = f'Your verification code is: {otp}\nThis code will expire in 10 minutes.'
+        mail.send(msg)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+    
+
 @auth.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        otp = request.form.get('otp')
+        
+        # 验证密码是否匹配
+        if password != confirm_password:
+            flash('Passwords do not match', 'danger')
+            return render_template('register.html', username=username, email=email)
+        
+        # 验证用户名和邮箱是否已存在
         if User.query.filter_by(username=username).first():
-            flash('Username is already taken! Please choose another.', 'danger')
-            return redirect(url_for('auth.register'))
-
-        new_user = User(username=username)
+            flash('Username is already taken', 'danger')
+            return render_template('register.html', username='', email=email)
+        
+        if User.query.filter_by(email=email).first():
+            flash('Email is already registered', 'danger')
+            return render_template('register.html', username=username, email='')
+        
+        # 验证OTP
+        registration_otp = session.get('registration_otp', {})
+        stored_otp = registration_otp.get('otp')
+        stored_email = registration_otp.get('email')
+        stored_username = registration_otp.get('username')
+        expiry = registration_otp.get('expiry', 0)
+        
+        if not stored_otp or email != stored_email or username != stored_username:
+            flash('Please request a new verification code', 'danger')
+            return render_template('register.html', username=username, email=email)
+        
+        if datetime.now().timestamp() > expiry:
+            flash('Verification code has expired. Please request a new one', 'danger')
+            return render_template('register.html', username=username, email=email)
+        
+        if otp != stored_otp:
+            flash('Invalid verification code', 'danger')
+            return render_template('register.html', username=username, email=email)
+        
+        # 创建新用户
+        new_user = User(username=username, email=email)
         new_user.set_password(password)
+        
         db.session.add(new_user)
         db.session.commit()
-
+        
+        # 添加审计日志
         log = AuditLog(
             user_id=new_user.user_id,
-            action_type='register', 
-            details='New user registration'
+            action_type='register',
+            details='New user registration with email verification'
         )
         db.session.add(log)
         db.session.commit()
-
+        
+        # 清除会话中的OTP数据
+        session.pop('registration_otp', None)
+        
         flash('Account created successfully! You can now login.', 'success')
         return redirect(url_for('auth.login'))
-
+    
     return render_template('register.html')
 
 @auth.route('/login', methods=['GET', 'POST'])
@@ -640,3 +724,8 @@ def view_file(file_id):
     except Exception as e:
         flash(f'Error viewing file: {str(e)}', 'danger')
         return redirect(url_for('main.home'))
+
+# Add these fields to your User model
+otp = db.Column(db.String(6), nullable=True)
+otp_expiry = db.Column(db.DateTime, nullable=True)
+email = db.Column(db.String(120), unique=True, nullable=False)

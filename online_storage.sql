@@ -7,6 +7,9 @@ CREATE TABLE User (
     user_id INT PRIMARY KEY AUTO_INCREMENT,       
     username VARCHAR(255) UNIQUE NOT NULL, 
     password_hash VARCHAR(255) NOT NULL,           -- use hashd password storage
+    email VARCHAR(120) UNIQUE NOT NULL,            -- added email field
+    otp VARCHAR(6),                                -- added OTP field
+    otp_expiry DATETIME,                           -- added OTP expiry field
     salt VARCHAR(255),                            
     is_admin TINYINT(1) DEFAULT 0,               
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -57,3 +60,12 @@ CREATE INDEX idx_users_username ON User(username);
 CREATE INDEX idx_files_user ON File(user_id);
 CREATE INDEX idx_shares_file ON FileShare(file_id);
 CREATE INDEX idx_audit_user ON AuditLog(user_id);
+
+-- Insert admin user
+-- Note: This uses a pre-hashed password for 'Admin@123'
+INSERT INTO User (username, email, password_hash, is_admin, created_at) 
+VALUES ('admin', 'admin@admin.com', 'pbkdf2:sha256:260000$xGKVnrUcJWOQDwRi$627f97c7c724dc57f1f0996b9e3a1a9c4fe2a5e512a8ff3d9d022b0e646c0a0e', 1, CURRENT_TIMESTAMP);
+
+-- Add audit log for admin creation
+INSERT INTO AuditLog (user_id, action_type, details, timestamp)
+VALUES (1, 'admin_create', 'Admin user created during database initialization', CURRENT_TIMESTAMP);

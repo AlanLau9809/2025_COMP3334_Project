@@ -13,6 +13,9 @@ class User(db.Model, UserMixin):   # 继承 UserMixin
     user_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    otp = db.Column(db.String(6), nullable=True)
+    otp_expiry = db.Column(db.DateTime, nullable=True)
     is_admin = db.Column(db.SmallInteger, default=0)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
