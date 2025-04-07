@@ -49,3 +49,22 @@ python run.py
 ### 2. Access Application
 Open in browser:
 [http://localhost:5000/login](http://localhost:5000/login)
+
+
+## Admin Account Setup
+For security reasons, the registration interface does not provide an option to create admin accounts.
+To create an administrator user:
+### Method 1: Database Modification
+1. Register a regular user through the web interface
+2. Using phpMyAdmin client:
+```sql
+UPDATE user SET is_admin = 1 WHERE username = 'your_username';
+```
+
+### Method 2: Use Pre-configured Admin (Recommended for Initial Setup)
+A default admin account is included in the database schema:
+- Username: admin
+- Password: admin
+- Security Note:
+    - Change the password immediately after first login
+    - This account should only be used for initial setup
