@@ -32,7 +32,6 @@
             </div>
         </div>
     </div>
-
         <!-- Flash Messages -->
         <div class="flash-container">
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -201,8 +200,15 @@
                         {{ log.action_type | capitalize }} - {{ log.timestamp.strftime('%Y-%m-%d %H:%M') }}
                     </span>
                     {% if log.file_id %}
-                    <span class="badge bg-primary rounded-pill">File ID: {{ log.file_id }}</span>
+                        <span class="badge bg-primary rounded-pill">
+                            {% if log.file %}
+                                File: {{ log.file.filename }}
+                            {% else %}
+                                File ID: {{ log.file_id }}
+                            {% endif %}
+                        </span>
                     {% endif %}
+
                 </li>
                 {% else %}
                 <li class="list-group-item">No activity records found</li>
@@ -232,13 +238,6 @@
                             {% endfor %}
                         </select>
                         <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple users</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Permission Level</label>
-                        <select class="form-select" name="permission_level" required>
-                            <option value="read" selected>Read Only</option>
-                            <!-- 只有上传者才能修改，所以这里只提供读取权限 -->
-                        </select>
                     </div>
                 </div>
                 <div class="modal-footer">

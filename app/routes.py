@@ -577,6 +577,7 @@ def share():
     ).first_or_404()
     
     success_count = 0
+    already_shared_count = 0
     
     for user_id in target_users:
         # 检查用户是否存在
@@ -591,14 +592,13 @@ def share():
         ).first()
         
         if existing_share:
-            # 更新现有共享的权限
-            existing_share.permission_level = permission
+            # File is already shared with this user
+            already_shared_count += 1
         else:
             # 创建新的共享记录
             share = FileShare(
                 file_id=file.file_id,
                 shared_with_user_id=user_id,
-                permission_level=permission
             )
             db.session.add(share)
         
@@ -615,7 +615,13 @@ def share():
         db.session.add(audit)
         db.session.commit()
         
-        flash(f'File successfully shared with {success_count} users', 'success')
+        if already_shared_count > 0:
+            if already_shared_count == success_count:
+                flash(f'File was already shared with the selected user(s).', 'info')
+            else:
+                flash(f'File shared with {success_count - already_shared_count} new users and already shared with {already_shared_count} users.', 'info')
+        else:
+            flash(f'File successfully shared with {success_count} users', 'success')
     else:
         flash('No users were selected or sharing failed', 'warning')
     

@@ -37,7 +37,6 @@ CREATE TABLE FileShare (
     share_id INT PRIMARY KEY AUTO_INCREMENT,
     file_id INT NOT NULL,
     shared_with_user_id INT NOT NULL,       
-    permission_level VARCHAR(10) DEFAULT 'read', 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (file_id) REFERENCES File(file_id) ON DELETE CASCADE,
     FOREIGN KEY (shared_with_user_id) REFERENCES User(user_id) ON DELETE CASCADE
@@ -63,8 +62,8 @@ CREATE INDEX idx_audit_user ON AuditLog(user_id);
 
 -- Insert admin user
 -- Note: This uses a pre-hashed password for 'admin'
-INSERT INTO User (username, email, password_hash, is_admin, created_at) 
-VALUES ('admin', 'admin@admin.com', 'scrypt:32768:8:1$TqtI6k5ulEvYJW0p$8e8254c60e81d46ee8a5ae8bbb068cd1daf60ca527285928e31a20e369dce19017b701caae9554558048807efcf92741c0b4ac717edb32b57caf6dad616d483e', 1, CURRENT_TIMESTAMP);
+INSERT INTO User (username, email, password_hash, salt, is_admin, created_at) 
+VALUES ('admin', 'admin@admin.com', '6a2741f1fe5609c8abc58d43936c7b9e017fa41c8e1bf2ba474aa7e3e07e784b:33b2f46fb4ecbc4a21ab6412e90c2db07e745cb304cf7d6c1d2139cdb48419a0:c75eda0e6b184526d98de675bfba44d479c3425a0e667c9bc4ebee3764acc35d','3??o???J!?d?-?~t\??}l!9ʹ??' , 1, CURRENT_TIMESTAMP);
 
 -- Add audit log for admin creation
 INSERT INTO AuditLog (user_id, action_type, details, timestamp)

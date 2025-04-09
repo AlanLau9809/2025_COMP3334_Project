@@ -139,7 +139,6 @@ class FileShare(db.Model):
     share_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     file_id = db.Column(db.Integer, db.ForeignKey('File.file_id', ondelete='CASCADE'), nullable=False)
     shared_with_user_id = db.Column(db.Integer, db.ForeignKey('User.user_id', ondelete='CASCADE'), nullable=False)
-    permission_level = db.Column(db.String(10), default='read')
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
     # 定义关系
