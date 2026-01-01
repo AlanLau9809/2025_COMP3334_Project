@@ -138,11 +138,11 @@ mysql -u root -p online_storage < online_storage.sql
 ### 5. Email Configuration (Required for OTP)
 The system uses Gmail SMTP for OTP delivery. Current configuration in `app/__init__.py`:
 ```python
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_SERVER'] = 'sample.smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'polycomp3334project@gmail.com'
-app.config['MAIL_PASSWORD'] = 'ibby erqs ekoa lqtj'  # App-specific password
+app.config['MAIL_USERNAME'] = 'sample.polycomp3334project@gmail.com'
+app.config['MAIL_PASSWORD'] = 'SamplePassword'
 ```
 
 **For production deployment**: Update email credentials in `app/__init__.py` or use environment variables.
