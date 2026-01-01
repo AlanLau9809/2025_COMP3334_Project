@@ -261,11 +261,4 @@ The system successfully prevents SQL injection attacks through SQLAlchemy ORM:
 
 ## 📄 License
 
-This project is developed for academic purposes as part of COMP3334 - Computer Systems Security course. All rights reserved for educational use.
-
----
-
-**Developed by**: COMP3334 Group Project Team  
-**Course**: Computer Systems Security (2024)  
-**Institution**: The Hong Kong Polytechnic University  
-**Focus**: Secure system design and implementation against passive adversaries
+This project is developed for academic purposes as part of PolyU COMP3334 - Computer Systems Security course. All rights reserved for educational use.
